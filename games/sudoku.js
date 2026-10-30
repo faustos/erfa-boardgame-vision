@@ -9,8 +9,8 @@
 //   Fill every empty cell so that each row, each column and each 3 × 3 box holds every digit 1-9 exactly once.
 //
 // What is done:  finding the board (the black frame), straightening it, cutting it into 9 × 9 cells,
-//                telling empty cells from written ones, drawing the cut grid.
-// What is open:  TODO 1 in detect (which digit, with few-shot references) and TODO 2 in solve.
+//                telling empty cells from written ones, which digit (few-shot references), drawing the cut grid.
+// What is open:  TODO 2 in solve.
 //
 // The state (plain JSON) that detect() returns and solve() gets:
 //   {
@@ -67,10 +67,12 @@ async function readBoard(frame, engine) {
   const paper = brightness(inside);
   // margin 0.15: cut 15 % off every side of a cell, so the grid lines do not count as ink.
   const cells = engine.cutTiles(inside, 9, 9, 0.15);
-  const grid = cells.map((row) => row.map((cell) => {
-    if (inkShare(cell, paper) < EMPTY_BELOW) return 0;
-    return readDigit(cell, paper, engine);
-  }));
+  const grid = [];
+  for (const row of cells) {
+    const digits = [];
+    for (const cell of row) digits.push(inkShare(cell, paper) < EMPTY_BELOW ? 0 : await readDigit(cell, paper, engine));
+    grid.push(digits);
+  }
   return { corners: corners.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })), grid };
 }
 
@@ -97,26 +99,37 @@ function inkShare(image, paper) {
   return ink / (image.width * image.height);
 }
 
-// TODO 1 (digit): return 1-9 for a cell that has ink in it.
-// Few-shot: you do not write rules for each digit. You show the computer a few example cells of each digit
-// ("references"), and it picks the digit whose examples look most like this cell.
-// Hint, with your printed sheet:
-//   1. Open tiles.html, pick "a board (grid)", Rows 9, Cols 9, Margin 0.15, point the camera at the sheet (the black
-//      frame is cut away for you), tap a cell and name its digit ("1" … "9"). Do 2-3 cells per digit.
-//   2. Export the JSON and save it as games/sudoku.refs.json.
-//   3. Here: load it once (keep it in a variable outside this function):
-//        refs ??= await engine.fetchReferences(new URL('./sudoku.refs.json', import.meta.url));
-//      then  const found = await engine.classify(cell, refs);  → { label, score } or null.
-//      Return Number(found.label), or null when found.score is low (below about 0.6: not sure).
-//      (detect is async, so you may make this function async and write  await readDigit(...)  above.)
-// Without a camera (node, the replay pictures): engine.pixelEmbedding(cell) + engine.matchTile(embedding, refs)
-// work the same way, with references you make from cells of the replay pictures (replay/sudoku/*.truth.json
-// says which digit is where).
-// Tip: a digit written a bit to the side looks different to the computer. Cut the cell down to the box
-// around its ink pixels (isInk) before you compare.
+// The digit references (games/sudoku.refs.json), loaded once.
+/** @type {{ label: string, embedding: number[] }[] | undefined} */
+let refs;
+
+// Returns 1-9 for a cell that has ink in it, or null when not sure.
+// Few-shot: you do not write rules for each digit. The references are example cells of each digit, cut from the
+// photos in replay/sudoku/ (ink box only), and the embedder picks the digit whose examples look most like this cell.
+// In node (node replay/run.js sudoku) the embedder does not run, so every digit stays null there.
 /** @param {Frame} cell @param {number} paper @param {import('../engine/types.js').Engine} engine */
-function readDigit(cell, paper, engine) {
-  return null;
+async function readDigit(cell, paper, engine) {
+  if (typeof document === 'undefined') return null;
+  refs ??= await engine.fetchReferences(new URL('./sudoku.refs.json', import.meta.url));
+  const found = await engine.classify(inkBox(cell, paper, engine), refs);
+  if (!found || found.score < 0.6) return null;
+  return Number(found.label);
+}
+
+// The cell cut down to the box around its ink, plus 2 pixels: a digit a bit to the side then looks the same.
+/** @param {Frame} cell @param {number} paper @param {import('../engine/types.js').Engine} engine */
+function inkBox(cell, paper, engine) {
+  let left = cell.width, top = cell.height, right = -1, bottom = -1;
+  for (let y = 0; y < cell.height; y++) {
+    for (let x = 0; x < cell.width; x++) {
+      if (!isInk(cell, x, y, paper)) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  return engine.cropTiles(cell, [{ x: left - 2, y: top - 2, width: right - left + 5, height: bottom - top + 5 }])[0];
 }
 
 // TODO 2 (solve): fill the empty cells and return { fills: [{ row, col, digit }] }, or null if you cannot.

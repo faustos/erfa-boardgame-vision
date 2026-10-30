@@ -284,6 +284,7 @@ helps (the app is installable, see below). Known limit: after a version bump of 
 | `games/set.js` | Set starter, learning track 2: finds and straightens the cards; 7 TODOs (features, sets, steady) |
 | `games/qwirkle.js` | Qwirkle starter: tiles, their colour and shape |
 | `games/sudoku.js` | Sudoku on the printed sheet |
+| `games/sudoku.refs.json` | Reference digits for Sudoku, cut from the photos in `replay/sudoku/` |
 | `games/tictactoe.js` | Tic-Tac-Toe on the printed sheet |
 | `games/ubongo.js` | Ubongo starter: reads everything, the solver is open |
 | `games/ubongo.refs.json` | Reference pictures for the Ubongo piece pictures |

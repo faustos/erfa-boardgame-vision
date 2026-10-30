@@ -105,7 +105,8 @@ let refs;
 
 // Returns 1-9 for a cell that has ink in it, or null when not sure.
 // Few-shot: you do not write rules for each digit. The references are example cells of each digit, cut from the
-// photos in replay/sudoku/ (ink box only), and the embedder picks the digit whose examples look most like this cell.
+// photos in replay/sudoku/ at several picture sizes (ink box only, the camera gives smaller pictures), and the
+// embedder picks the digit whose examples look most like this cell.
 // In node (node replay/run.js sudoku) the embedder does not run, so every digit stays null there.
 /** @param {Frame} cell @param {number} paper @param {import('../engine/types.js').Engine} engine */
 async function readDigit(cell, paper, engine) {

@@ -1,5 +1,5 @@
 // @ts-check
-// Sudoku on paper, half done on purpose: you finish it in the workshop.
+// Sudoku on paper.
 // Print the sheet first: open print.html, print page 1 on A4 (top: the puzzle, bottom: empty, write your own).
 // Open the page with #sudoku. Try it without a camera: "Sample photos" runs the pictures in replay/sudoku/.
 // Run in a terminal (after pnpm install once):  node replay/run.js sudoku
@@ -9,8 +9,8 @@
 //   Fill every empty cell so that each row, each column and each 3 × 3 box holds every digit 1-9 exactly once.
 //
 // What is done:  finding the board (the black frame), straightening it, cutting it into 9 × 9 cells,
-//                telling empty cells from written ones, which digit (few-shot references), drawing the cut grid.
-// What is open:  TODO 2 in solve.
+//                telling empty cells from written ones, which digit (few-shot references), solving it,
+//                drawing the cut grid and the solution.
 //
 // The state (plain JSON) that detect() returns and solve() gets:
 //   {
@@ -133,22 +133,85 @@ function inkBox(cell, paper, engine) {
   return engine.cropTiles(cell, [{ x: left - 2, y: top - 2, width: right - left + 5, height: bottom - top + 5 }])[0];
 }
 
-// TODO 2 (solve): fill the empty cells and return { fills: [{ row, col, digit }] }, or null if you cannot.
-// Hint ("backtracking", the usual way, about 20 lines):
-//   - Copy the grid. Return null if any cell is still null (a digit not read).
-//   - canPut(grid, row, col, digit): false if the digit is already in that row, that column, or that 3 × 3
-//     box (the box starts at row - row % 3, col - col % 3).
-//   - fill(grid): find the first empty cell (0). None left → true (solved). Otherwise try digit 1 … 9:
-//     if canPut, write it and call fill(grid) again; if that gives true, return true; else set the cell
-//     back to 0 and try the next digit. No digit works → false.
-//   - If fill(copy) is true, list every cell that was 0 in state.grid with its digit from the copy.
-// Keep it pure: no engine, no picture, only the state.
+// Fills the empty cells and returns { fills: [{ row, col, digit }] }, or null if it cannot: no board, a digit not
+// read, a digit twice in a row, column or box (usually a misread digit), or no solution.
+// "Backtracking": always take the empty cell with the fewest free digits next, try each one, undo at a dead end.
+// Which digits a row, column or box already holds is one number each, with one bit per digit (bit 1 … bit 9).
+// Pure: no engine, no picture, only the state.
 /**
  * @param {SudokuState} state
  * @returns {SudokuMove}
  */
 export function solve(state) {
-  return null;
+  if (state.grid.length === 0) return null;
+  const rows = new Array(9).fill(0);
+  const cols = new Array(9).fill(0);
+  const boxes = new Array(9).fill(0);
+  /** @type {{ row: number, col: number, digit: number }[]} */
+  const fills = [];
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      const digit = state.grid[row][col];
+      if (digit === null) return null;
+      if (digit === 0) {
+        fills.push({ row, col, digit: 0 });
+        continue;
+      }
+      const bit = 1 << digit;
+      const box = boxOf(row, col);
+      if ((rows[row] | cols[col] | boxes[box]) & bit) return null;
+      rows[row] |= bit;
+      cols[col] |= bit;
+      boxes[box] |= bit;
+    }
+  }
+
+  const fill = () => {
+    let cell = null;
+    let free = 0;
+    let fewest = 10;
+    for (const candidate of fills) {
+      if (candidate.digit !== 0) continue;
+      const options = ALL_DIGITS & ~(rows[candidate.row] | cols[candidate.col] | boxes[boxOf(candidate.row, candidate.col)]);
+      const count = countBits(options);
+      if (count < fewest) {
+        cell = candidate;
+        free = options;
+        fewest = count;
+      }
+    }
+    if (!cell) return true; // no empty cell left: solved
+    const box = boxOf(cell.row, cell.col);
+    for (let digit = 1; digit <= 9; digit++) {
+      const bit = 1 << digit;
+      if (!(free & bit)) continue;
+      cell.digit = digit;
+      rows[cell.row] |= bit;
+      cols[cell.col] |= bit;
+      boxes[box] |= bit;
+      if (fill()) return true;
+      cell.digit = 0;
+      rows[cell.row] &= ~bit;
+      cols[cell.col] &= ~bit;
+      boxes[box] &= ~bit;
+    }
+    return false;
+  };
+  return fill() ? { fills } : null;
+}
+
+const ALL_DIGITS = 0b1111111110; // bit 1 … bit 9
+
+/** @param {number} row @param {number} col */
+function boxOf(row, col) {
+  return Math.floor(row / 3) * 3 + Math.floor(col / 3);
+}
+
+/** @param {number} bits */
+function countBits(bits) {
+  let count = 0;
+  for (let rest = bits; rest; rest &= rest - 1) count++;
+  return count;
 }
 
 // Draws the cut grid on the picture (cyan), each read digit small in its cell ('?' = not read yet) and
